@@ -36,7 +36,7 @@ cp .env.production.example .env.production
 - `DATABASE_URL`：使用相同数据库账号，主机名填 `postgres`；密码含 URL 特殊字符时需要编码。
 - `APP_VERSION`：本次部署的版本标识。
 
-已有配置直接使用，不覆盖。生产环境不设置开发种子密码。
+已有配置直接使用。
 
 ```bash
 docker compose --env-file .env.production -f compose.prod.yaml config --quiet
