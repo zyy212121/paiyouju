@@ -1,0 +1,33 @@
+:root {
+  --color-page-bg: #04110f;
+  --color-table-bg: #0f5849;
+  --color-panel-bg: rgb(255 255 255 / 0.055);
+  --color-text-primary: #f5f5f4;
+  --color-text-secondary: #a8a29e;
+  --color-border: rgb(255 255 255 / 0.1);
+  --color-accent: #fcd34d;
+  --color-success: #6ee7b7;
+  --color-warning: #fde68a;
+  --color-danger: #fda4af;
+  --color-disabled: #78716c;
+  --felt-950: #04110f;
+  --felt-900: #071a18;
+  --felt-700: #0f5849;
+  --gold-300: #fcd34d;
+  --surface: rgb(255 255 255 / 0.055);
+  --shadow-panel: 0 20px 45px rgb(0 0 0 / 0.15);
+  --shadow-table: inset 0 0 60px rgb(3 29 25 / 0.65), 0 28px 70px rgb(0 0 0 / 0.28);
+  --radius-control: 0.75rem;
+  --radius-panel: 1rem;
+  --radius-table: 2rem;
+  --space-control: 0.75rem;
+  --space-panel: 1.25rem;
+  --motion-fast: 150ms;
+  --motion-normal: 250ms;
+  --layer-banner: 60;
+  --layer-dialog: 70;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+}

@@ -1,0 +1,1 @@
+ALTER TYPE "HandActionAutomaticReason" ADD VALUE IF NOT EXISTS 'LEAVE_AFTER_HAND';

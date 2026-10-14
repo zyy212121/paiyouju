@@ -1,0 +1,49 @@
+{
+  auto_https off
+  admin off
+
+  servers {
+    timeouts {
+      read_body 15s
+      read_header 10s
+      write 30s
+      idle 5m
+    }
+  }
+}
+
+:8080 {
+  encode zstd gzip
+
+  request_body {
+    max_size 1MB
+  }
+
+  header {
+    -Server
+    Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' wss:; media-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'"
+    Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+    Referrer-Policy no-referrer
+    X-Content-Type-Options nosniff
+    X-Frame-Options DENY
+  }
+
+  @socket path /socket.io/*
+  reverse_proxy @socket app:3000 {
+    flush_interval -1
+    transport http {
+      dial_timeout 5s
+      response_header_timeout 0s
+    }
+  }
+
+  @api path /api/* /health /ready
+  reverse_proxy @api app:3000 {
+    transport http {
+      dial_timeout 5s
+      response_header_timeout 30s
+    }
+  }
+
+  reverse_proxy app:3000
+}

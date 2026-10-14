@@ -1,0 +1,13 @@
+:where(a, button, input, select, textarea):focus-visible {
+  outline: 3px solid rgb(252 211 77 / 0.78);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,1 @@
+ALTER TYPE "RoomSpecialMode" ADD VALUE 'SHORT_DECK';

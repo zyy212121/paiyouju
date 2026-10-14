@@ -1,0 +1,19 @@
+packages:
+  - apps/*
+  - packages/*
+
+allowBuilds:
+  '@prisma/engines': true
+  argon2: true
+  esbuild: true
+  prisma: true
+
+minimumReleaseAgeExclude:
+  - '@testing-library/user-event@14.6.4'
+  - globals@17.11.0
+
+onlyBuiltDependencies:
+  - "@prisma/engines"
+  - argon2
+  - esbuild
+  - prisma

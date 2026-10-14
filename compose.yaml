@@ -1,0 +1,48 @@
+name: wepoker-standard-postgres
+
+services:
+  postgres-dev:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    command: ["postgres", "-c", "max_connections=100"]
+    environment:
+      POSTGRES_USER: ${POSTGRES_DEV_USER:?POSTGRES_DEV_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_DEV_PASSWORD:?POSTGRES_DEV_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DEV_DB:?POSTGRES_DEV_DB is required}
+      POSTGRES_INITDB_ARGS: --encoding=UTF8
+    ports:
+      - "127.0.0.1:55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    volumes:
+      - postgres-dev-data:/var/lib/postgresql/data
+
+  postgres-test:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    command: ["postgres", "-c", "max_connections=100"]
+    environment:
+      POSTGRES_USER: ${POSTGRES_TEST_USER:?POSTGRES_TEST_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:?POSTGRES_TEST_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_TEST_DB:?POSTGRES_TEST_DB is required}
+      POSTGRES_INITDB_ARGS: --encoding=UTF8
+    ports:
+      - "127.0.0.1:55433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    volumes:
+      - postgres-test-data:/var/lib/postgresql/data
+
+volumes:
+  postgres-dev-data:
+    name: wepoker-postgres-dev-data
+  postgres-test-data:
+    name: wepoker-postgres-test-data

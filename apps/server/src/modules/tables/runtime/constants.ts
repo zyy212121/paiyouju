@@ -1,0 +1,2 @@
+export const POST_HAND_REVIEW_DURATION_MS = 4_000;
+export const RESERVED_AWAY_DURATION_MS = 60_000;

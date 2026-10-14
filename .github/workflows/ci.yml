@@ -1,0 +1,85 @@
+name: Step 7 CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+        env:
+          POSTGRES_DB: wepoker_test
+          POSTGRES_PASSWORD: ci-only-strong-postgres-password
+          POSTGRES_USER: wepoker_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U wepoker_test -d wepoker_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      CI: "true"
+      WEPOKER_ENV_FILE: ${{ github.workspace }}/.env.ci.test
+      WEPOKER_STANDARD_POSTGRES: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.16.0
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.16.0 --activate
+      - name: Create isolated CI configuration
+        run: |
+          printf '%s\n' \
+            'NODE_ENV=test' \
+            'HOST=127.0.0.1' \
+            'PORT=3105' \
+            'CLIENT_ORIGIN=http://127.0.0.1:5173' \
+            'DATABASE_URL=postgresql://wepoker_test:ci-only-strong-postgres-password@127.0.0.1:5432/wepoker_test?schema=public' \
+            'DATABASE_POOL_MAX=10' \
+            'SESSION_COOKIE_NAME=wepoker_session' \
+            'SESSION_TTL_DAYS=14' \
+            'INITIAL_USER_POINTS=10000' \
+            'DEV_SEED_PASSWORD=ci-only-seed-password' \
+            'LOG_LEVEL=silent' > "$WEPOKER_ENV_FILE"
+      - name: Frozen install
+        run: corepack pnpm install --frozen-lockfile
+      - name: Database schema and migration
+        run: |
+          corepack pnpm db:validate
+          corepack pnpm --filter @paiyouju/server exec prisma migrate deploy
+      - name: Static and unit verification
+        run: |
+          corepack pnpm lint
+          corepack pnpm typecheck
+          corepack pnpm test
+          corepack pnpm build
+      - name: PostgreSQL integration and data audit
+        run: |
+          corepack pnpm --filter @paiyouju/server exec vitest run --config vitest.integration.config.ts
+          corepack pnpm audit:data
+      - name: Chromium browser and PWA regression
+        run: |
+          corepack pnpm --filter @paiyouju/web exec playwright install --with-deps chromium
+          WEPOKER_E2E_ENV_FILE="$WEPOKER_ENV_FILE" corepack pnpm test:e2e:local
+          corepack pnpm test:e2e:pwa
+      - name: Dependency and production contracts
+        run: |
+          corepack pnpm audit:dependencies
+          docker build -t paiyouju:ci .
+          docker compose --env-file .env.production.example -f compose.prod.yaml config --quiet

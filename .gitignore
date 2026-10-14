@@ -1,0 +1,47 @@
+# Dependencies and package-manager state
+node_modules/
+.pnpm-store/
+*.log
+pnpm-debug.log*
+
+# Build and test outputs
+dist/
+coverage/
+playwright-report/
+test-results/
+room-logs/
+.public-test/
+.tools/
+.env.public-test
+.vite/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+!.env.docker.example
+!.env.production.example
+
+# Prisma generated client and local data
+apps/server/src/generated/prisma/
+*.db
+*.db-journal
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local deployment scratch space
+.deploy/
+backups/
+exports/
+restore-drills/
+*.dump
+*.backup
+
+# Non-distributed local design references
+学习素材/
+现有ui问题/

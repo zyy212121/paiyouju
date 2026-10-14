@@ -1,0 +1,32 @@
+{
+  "name": "@paiyouju/poker-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.scripts.json",
+    "test": "vitest run",
+    "test:properties": "vitest run src/properties.test.ts",
+    "test:engine-properties": "vitest run src/engine/engine-properties.test.ts",
+    "test:short-all-in": "vitest run src/engine/short-all-in.test.ts",
+    "test:side-pots": "vitest run src/engine/pots.test.ts src/engine/settlement.test.ts",
+    "simulate": "tsx scripts/simulate.ts",
+    "verify:five-card-distribution": "tsx scripts/verify-five-card-distribution.ts"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "fast-check": "4.9.0",
+    "tsx": "4.23.12",
+    "vitest": "4.1.10"
+  }
+}

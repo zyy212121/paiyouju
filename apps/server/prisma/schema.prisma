@@ -1,0 +1,720 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum WalletLedgerType {
+  INITIAL_GRANT
+  BUY_IN
+  CASH_OUT
+  PAID_CARD_REVEAL
+  HYPOTHETICAL_RUNOUT
+  ACTION_TIME_EXTENSION
+  HAND_ENTRY_FEE
+  ADMIN_ADJUSTMENT
+}
+
+enum RoomStatus {
+  OPEN
+  CLOSING
+  CLOSED
+}
+
+enum RoomSpecialMode {
+  NORMAL
+  SQUID
+  SHORT_DECK
+  BOMB_POT
+}
+
+enum RoomMemberRole {
+  OWNER
+  MEMBER
+}
+
+enum IdempotencyScope {
+  ROOM_CREATE
+  PAID_CARD_REVEAL
+  PAID_HAND_REVEAL
+  HYPOTHETICAL_RUNOUT
+  ROOM_ARCHIVE
+  PHONE_BIND
+  TABLE_START
+  TABLE_AUTOPILOT_ARM
+  TABLE_AUTOPILOT_CANCEL
+  TABLE_TRUSTEESHIP_SET
+  TABLE_RESERVE_AWAY
+  TABLE_REVEAL_OWN_CARDS
+  TABLE_ACTION_TIME_EXTENSION
+  TABLE_RUNOUT_CHOICE
+  TABLE_SEAT_TAKE
+  TABLE_BUY_IN
+  TABLE_SIT_OUT
+  TABLE_RETURN
+  TABLE_LEAVE
+  ADMIN_WALLET_ADJUSTMENT
+}
+
+enum TableSeatPlayStatus {
+  ACTIVE
+  SIT_OUT
+  SIT_OUT_AFTER_HAND
+  LEAVE_AFTER_HAND
+  RESERVED_AWAY
+  BUSTED_WAITING_REBUY
+}
+
+enum GameSessionStatus {
+  ACTIVE
+  CLOSED
+}
+
+enum TableStackLedgerType {
+  BUY_IN
+  CASH_OUT
+  HAND_RESULT
+  SQUID_SETTLEMENT
+}
+
+enum HandFinishReason {
+  FOLD_TO_WIN
+  SHOWDOWN
+}
+
+enum HandStreet {
+  PREFLOP
+  FLOP
+  TURN
+  RIVER
+  SHOWDOWN
+}
+
+enum HandActionType {
+  FOLD
+  CHECK
+  CALL
+  BET
+  RAISE_TO
+  ALL_IN
+}
+
+enum HandActionAutomaticReason {
+  TURN_TIMEOUT
+  NEXT_DECISION_AUTOPILOT
+  NEXT_DECISION_AUTO_CALL
+  RESERVED_AWAY
+  LEAVE_AFTER_HAND
+  TRUSTEESHIP
+}
+
+enum HoleCardsPublicReason {
+  SHOWDOWN
+  VOLUNTARY
+}
+
+enum HypotheticalRunoutGenerationSource {
+  ORIGINAL_REMAINING_DECK
+  CSPRNG_LEGACY_FALLBACK
+}
+
+enum TableRuntimeStatus {
+  IDLE
+  START_COUNTDOWN
+  PLAYING
+  POST_HAND_REVIEW
+  PAUSED
+  CLOSING
+  PERSISTENCE_ERROR
+  RECOVERY_ERROR
+  CLOSED
+}
+
+enum SnapshotRecoveryStatus {
+  PENDING
+  READY
+  ERROR
+}
+
+model User {
+  id                          String                       @id @default(cuid())
+  avatarId                    String                       @default("avatar-01") @db.VarChar(16)
+  username                    String
+  usernameNormalized          String                       @unique
+  nickname                    String
+  passwordHash                String
+  phoneNumber                 String?                      @unique @db.VarChar(11)
+  role                        UserRole                     @default(USER)
+  isTestBot                   Boolean                      @default(false)
+  testBotOrdinal              Int?                         @unique
+  testBotLeaseId              String?                      @db.Uuid
+  testBotLeaseExpiresAt       DateTime?
+  createdAt                   DateTime                     @default(now())
+  updatedAt                   DateTime                     @updatedAt
+  sessions                    UserSession[]
+  wallet                      Wallet?
+  walletLedgerEntries         WalletLedgerEntry[]
+  ownedRooms                  Room[]                       @relation("RoomOwner")
+  archivedRooms               Room[]                       @relation("RoomArchivedBy")
+  roomMemberships             RoomMember[]
+  idempotencyRequests         RequestIdempotency[]         @relation("IdempotencyActor")
+  tableSeats                  TableSeat[]
+  gameSessions                GameSession[]
+  tableStackEntries           TableStackLedgerEntry[]
+  handPlayerRecords           HandPlayerRecord[]
+  handActionRecords           HandActionRecord[]
+  tableActionReceipts         TableActionReceipt[]
+  paidRevealPurchases         PaidCardReveal[]             @relation("PaidRevealBuyer")
+  paidRevealTargets           PaidCardReveal[]             @relation("PaidRevealTarget")
+  paidHandRevealPurchases     PaidHandRevealPurchase[]     @relation("PaidHandRevealBuyer")
+  hypotheticalRunoutPurchases HypotheticalRunoutPurchase[] @relation("HypotheticalRunoutBuyer")
+  auditLogsAuthored           AuditLog[]                   @relation("AuditActor")
+  auditLogsTargeted           AuditLog[]                   @relation("AuditTargetUser")
+}
+
+model UserSession {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  lastSeenAt DateTime?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
+  @@index([revokedAt])
+}
+
+model Wallet {
+  id        String              @id @default(cuid())
+  userId    String              @unique
+  balance   Int                 @default(0)
+  version   Int                 @default(0)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+  user      User                @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  entries   WalletLedgerEntry[]
+
+  @@unique([id, userId])
+}
+
+model WalletLedgerEntry {
+  id                         String                      @id @default(cuid())
+  walletId                   String
+  userId                     String
+  sequence                   Int
+  type                       WalletLedgerType
+  signedAmount               Int
+  balanceBefore              Int
+  balanceAfter               Int
+  idempotencyKey             String                      @unique
+  requestFingerprint         String
+  relatedRoomId              String?
+  relatedGameSessionId       String?
+  relatedHandId              String?
+  metadata                   Json?
+  createdAt                  DateTime                    @default(now())
+  wallet                     Wallet                      @relation(fields: [walletId, userId], references: [id, userId], onDelete: Restrict, onUpdate: Restrict)
+  user                       User                        @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  relatedRoom                Room?                       @relation(fields: [relatedRoomId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  relatedGameSession         GameSession?                @relation(fields: [relatedGameSessionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  relatedHand                HandRecord?                 @relation(fields: [relatedHandId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  tableStackEntry            TableStackLedgerEntry?
+  paidCardReveal             PaidCardReveal?
+  paidHandRevealPurchase     PaidHandRevealPurchase?
+  hypotheticalRunoutPurchase HypotheticalRunoutPurchase?
+
+  @@unique([walletId, sequence])
+  @@unique([id, userId, relatedRoomId, relatedGameSessionId, signedAmount, type])
+  @@unique([id, userId, relatedRoomId, relatedHandId, signedAmount, type])
+  @@index([userId, sequence])
+  @@index([userId, createdAt, id])
+  @@index([createdAt])
+  @@index([relatedRoomId])
+}
+
+model Room {
+  id                          String                       @id @default(cuid())
+  roomCode                    String                       @unique @db.Char(6)
+  name                        String
+  ownerId                     String
+  maxSeats                    Int
+  smallBlind                  Int
+  bigBlind                    Int
+  specialMode                 RoomSpecialMode              @default(NORMAL)
+  bombPotBlindMultiplier      Int?
+  bombPotIntervalMinutes      Int?
+  bombPotNextAt               DateTime?
+  squidStake                  Int?
+  squidRoundNumber            Int                          @default(1)
+  squidRoundGraceEndsAt       DateTime?
+  squidSettlementPending      Boolean                      @default(false)
+  initialBuyIn                Int                          @default(2000)
+  minimumBuyIn                Int
+  maximumBuyIn                Int
+  actionTimeSeconds           Int
+  durationMinutes             Int                          @default(60)
+  expiresAt                   DateTime                     @default(dbgenerated("(CURRENT_TIMESTAMP + '01:00:00'::interval)"))
+  passwordHash                String?
+  paidCardRevealEnabled       Boolean                      @default(false)
+  paidCardRevealCost          Int                          @default(0)
+  nextHandPaused              Boolean                      @default(false)
+  requiresManualStart         Boolean                      @default(true)
+  runItTwiceEnabled           Boolean                      @default(false)
+  tableStartedAt              DateTime?
+  nextHandNumber              Int                          @default(1)
+  status                      RoomStatus                   @default(OPEN)
+  closeRequestedAt            DateTime?
+  createdAt                   DateTime                     @default(now())
+  updatedAt                   DateTime                     @updatedAt
+  closedAt                    DateTime?
+  archivedAt                  DateTime?
+  archivedByUserId            String?
+  owner                       User                         @relation("RoomOwner", fields: [ownerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  archivedBy                  User?                        @relation("RoomArchivedBy", fields: [archivedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  members                     RoomMember[]
+  walletLedgerEntries         WalletLedgerEntry[]
+  tableSeats                  TableSeat[]
+  gameSessions                GameSession[]
+  tableStackEntries           TableStackLedgerEntry[]
+  hands                       HandRecord[]
+  snapshot                    TableSnapshot?
+  actionReceipts              TableActionReceipt[]
+  paidCardReveals             PaidCardReveal[]
+  paidHandRevealPurchases     PaidHandRevealPurchase[]
+  hypotheticalRunoutPurchases HypotheticalRunoutPurchase[]
+  auditLogs                   AuditLog[]
+
+  @@index([ownerId, createdAt])
+  @@index([archivedAt])
+  @@index([status, closedAt, id])
+}
+
+model RoomMember {
+  id        String         @id @default(cuid())
+  roomId    String
+  userId    String
+  role      RoomMemberRole @default(MEMBER)
+  joinedAt  DateTime       @default(now())
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  room      Room           @relation(fields: [roomId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  user      User           @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([roomId, userId])
+  @@index([userId, joinedAt])
+}
+
+model RequestIdempotency {
+  id          String           @id @default(cuid())
+  scope       IdempotencyScope
+  actorId     String
+  key         String
+  requestHash String
+  resourceId  String?
+  response    Json?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  actor       User             @relation("IdempotencyActor", fields: [actorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([scope, actorId, key])
+  @@index([actorId, createdAt])
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id               String      @id @default(cuid())
+  actorUserId      String
+  actorRole        UserRole
+  action           String      @db.VarChar(80)
+  targetType       String      @db.VarChar(64)
+  targetId         String?     @db.VarChar(128)
+  targetUserId     String?
+  roomId           String?
+  handId           String?
+  requestId        String      @db.Uuid
+  operationId      String?     @db.Uuid
+  reason           String?     @db.VarChar(200)
+  ipAddressSummary String?     @db.VarChar(128)
+  userAgentSummary String?     @db.VarChar(256)
+  metadata         Json?
+  createdAt        DateTime    @default(now())
+  actor            User        @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  targetUser       User?       @relation("AuditTargetUser", fields: [targetUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  room             Room?       @relation(fields: [roomId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  hand             HandRecord? @relation(fields: [handId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([actorUserId, operationId])
+  @@index([actorUserId, createdAt, id])
+  @@index([action, createdAt, id])
+  @@index([targetType, targetId, createdAt, id])
+  @@index([targetUserId, createdAt, id])
+  @@index([roomId, createdAt, id])
+  @@index([handId, createdAt, id])
+  @@index([createdAt])
+}
+
+model TableSeat {
+  id                           String              @id @default(cuid())
+  roomId                       String
+  userId                       String
+  gameSessionId                String              @unique
+  seatIndex                    Int
+  stack                        Int
+  playStatus                   TableSeatPlayStatus @default(ACTIVE)
+  nextActionAutopilotArmed     Boolean             @default(false)
+  nextActionAutoCallCurrentBet Int?
+  pendingShowCardIndices       Int[]               @default([])
+  reservedAwayEndsAt           DateTime?
+  squidMarked                  Boolean             @default(false)
+  squidRoundParticipant        Boolean             @default(false)
+  trusteeshipEnabled           Boolean             @default(false)
+  version                      Int                 @default(0)
+  createdAt                    DateTime            @default(now())
+  updatedAt                    DateTime            @updatedAt
+  room                         Room                @relation(fields: [roomId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  user                         User                @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  gameSession                  GameSession         @relation(fields: [gameSessionId, roomId, userId], references: [id, roomId, userId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([roomId, seatIndex])
+  @@unique([roomId, userId])
+  @@unique([gameSessionId, roomId, userId])
+  @@unique([gameSessionId, roomId, userId, seatIndex])
+  @@unique([id, gameSessionId, userId, roomId])
+  @@index([userId])
+}
+
+model GameSession {
+  id                  String                  @id @default(cuid())
+  roomId              String
+  userId              String
+  seatIndex           Int
+  status              GameSessionStatus       @default(ACTIVE)
+  totalBuyIn          Int
+  totalCashOut        Int                     @default(0)
+  detachedStack       Int?
+  startedAt           DateTime                @default(now())
+  endedAt             DateTime?
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+  room                Room                    @relation(fields: [roomId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  user                User                    @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  tableSeat           TableSeat?
+  tableStackEntries   TableStackLedgerEntry[]
+  handPlayerRecords   HandPlayerRecord[]
+  walletLedgerEntries WalletLedgerEntry[]
+
+  @@unique([id, roomId, userId])
+  @@unique([id, roomId, userId, seatIndex])
+  @@unique([id, userId, seatIndex])
+  @@index([roomId, status])
+  @@index([userId, startedAt, id])
+}
+
+model TableStackLedgerEntry {
+  id                  String               @id @default(cuid())
+  roomId              String
+  gameSessionId       String
+  userId              String
+  sequence            Int
+  type                TableStackLedgerType
+  signedAmount        Int
+  walletSignedAmount  Int?
+  walletType          WalletLedgerType?
+  stackBefore         Int
+  stackAfter          Int
+  walletLedgerEntryId String?              @unique
+  handId              String?
+  idempotencyKey      String               @unique
+  requestFingerprint  String
+  metadata            Json?
+  createdAt           DateTime             @default(now())
+  room                Room                 @relation(fields: [roomId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  gameSession         GameSession          @relation(fields: [gameSessionId, roomId, userId], references: [id, roomId, userId], onDelete: Restrict, onUpdate: Restrict)
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  walletLedgerEntry   WalletLedgerEntry?   @relation(fields: [walletLedgerEntryId, userId, roomId, gameSessionId, walletSignedAmount, walletType], references: [id, userId, relatedRoomId, relatedGameSessionId, signedAmount, type], onDelete: Restrict, onUpdate: Restrict)
+  hand                HandRecord?          @relation(fields: [handId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  handPlayer          HandPlayerRecord?    @relation(fields: [handId, roomId, userId, gameSessionId], references: [handId, roomId, userId, gameSessionId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([gameSessionId, sequence])
+  @@unique([walletLedgerEntryId, userId, roomId, gameSessionId, walletSignedAmount, walletType])
+  @@index([roomId, createdAt])
+  @@index([userId, createdAt, handId])
+  @@index([handId])
+}
+
+model HandRecord {
+  id                          String                       @id
+  roomId                      String
+  handNumber                  Int
+  buttonSeat                  Int
+  smallBlindSeat              Int
+  bigBlindSeat                Int
+  smallBlindAmount            Int
+  bigBlindAmount              Int
+  bombPotBlindAmount          Int?
+  board                       String[]
+  fullBoard                   String[]                     @default([])
+  remainingDeck               String[]                     @default([])
+  finishReason                HandFinishReason
+  paidCardRevealEnabled       Boolean                      @default(false)
+  paidCardRevealCost          Int                          @default(0)
+  startedAt                   DateTime
+  finishedAt                  DateTime
+  reviewEndsAt                DateTime?
+  runoutCount                 Int                          @default(1)
+  runoutVotes                 Json?
+  createdAt                   DateTime                     @default(now())
+  room                        Room                         @relation(fields: [roomId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  players                     HandPlayerRecord[]
+  actions                     HandActionRecord[]
+  pots                        HandPotRecord[]
+  runouts                     HandRunoutRecord[]
+  tableStackEntries           TableStackLedgerEntry[]
+  walletLedgerEntries         WalletLedgerEntry[]
+  paidCardReveals             PaidCardReveal[]
+  paidHandRevealPurchases     PaidHandRevealPurchase[]
+  hypotheticalRunoutPurchases HypotheticalRunoutPurchase[]
+  hypotheticalRunout          HandHypotheticalRunout?
+  auditLogs                   AuditLog[]
+
+  @@unique([roomId, handNumber])
+  @@unique([id, roomId])
+  @@index([roomId, finishedAt, id])
+}
+
+model HandPlayerRecord {
+  id                             String                  @id @default(cuid())
+  handId                         String
+  roomId                         String
+  userId                         String
+  gameSessionId                  String
+  seatIndex                      Int
+  startingStack                  Int
+  endingStack                    Int
+  committed                      Int
+  netResult                      Int
+  holeCards                      String[]
+  holeCardsPublic                Boolean
+  holeCardsPublicReason          HoleCardsPublicReason?
+  voluntarilyRevealedAt          DateTime?
+  voluntarilyRevealedCardIndices Int[]                   @default([])
+  folded                         Boolean
+  allIn                          Boolean
+  createdAt                      DateTime                @default(now())
+  hand                           HandRecord              @relation(fields: [handId, roomId], references: [id, roomId], onDelete: Restrict, onUpdate: Restrict)
+  user                           User                    @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  gameSession                    GameSession             @relation(fields: [gameSessionId, roomId, userId], references: [id, roomId, userId], onDelete: Restrict, onUpdate: Restrict)
+  actions                        HandActionRecord[]
+  tableStackEntries              TableStackLedgerEntry[]
+  paidRevealTargets              PaidCardReveal[]        @relation("PaidRevealTargetParticipant")
+
+  @@unique([handId, userId])
+  @@unique([handId, seatIndex])
+  @@unique([handId, userId, seatIndex])
+  @@unique([handId, roomId, userId, gameSessionId])
+  @@index([userId, createdAt, handId])
+  @@index([userId, handId])
+  @@index([gameSessionId])
+}
+
+model PaidCardReveal {
+  id                  String            @id @default(cuid())
+  handId              String
+  roomId              String
+  buyerUserId         String
+  targetUserId        String
+  cost                Int
+  walletSignedAmount  Int
+  walletType          WalletLedgerType
+  walletLedgerEntryId String            @unique
+  idempotencyKey      String            @unique
+  requestFingerprint  String
+  createdAt           DateTime          @default(now())
+  hand                HandRecord        @relation(fields: [handId, roomId], references: [id, roomId], onDelete: Restrict, onUpdate: Restrict)
+  room                Room              @relation(fields: [roomId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  buyer               User              @relation("PaidRevealBuyer", fields: [buyerUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  target              User              @relation("PaidRevealTarget", fields: [targetUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  targetPlayer        HandPlayerRecord  @relation("PaidRevealTargetParticipant", fields: [handId, targetUserId], references: [handId, userId], onDelete: Restrict, onUpdate: Restrict)
+  walletLedgerEntry   WalletLedgerEntry @relation(fields: [walletLedgerEntryId, buyerUserId, roomId, handId, walletSignedAmount, walletType], references: [id, userId, relatedRoomId, relatedHandId, signedAmount, type], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([buyerUserId, handId, targetUserId])
+  @@unique([walletLedgerEntryId, buyerUserId, roomId, handId, walletSignedAmount, walletType])
+  @@index([buyerUserId, handId])
+  @@index([handId, targetUserId])
+}
+
+model PaidHandRevealPurchase {
+  id                  String            @id @default(cuid())
+  handId              String
+  roomId              String
+  buyerUserId         String
+  cost                Int
+  walletSignedAmount  Int
+  walletType          WalletLedgerType
+  walletLedgerEntryId String            @unique
+  idempotencyKey      String            @unique
+  requestFingerprint  String
+  createdAt           DateTime          @default(now())
+  hand                HandRecord        @relation(fields: [handId, roomId], references: [id, roomId], onDelete: Restrict, onUpdate: Restrict)
+  room                Room              @relation(fields: [roomId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  buyer               User              @relation("PaidHandRevealBuyer", fields: [buyerUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  walletLedgerEntry   WalletLedgerEntry @relation(fields: [walletLedgerEntryId, buyerUserId, roomId, handId, walletSignedAmount, walletType], references: [id, userId, relatedRoomId, relatedHandId, signedAmount, type], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([buyerUserId, handId])
+  @@unique([walletLedgerEntryId, buyerUserId, roomId, handId, walletSignedAmount, walletType])
+  @@index([handId])
+}
+
+model HandHypotheticalRunout {
+  id               String                             @id @default(cuid())
+  handId           String                             @unique
+  cards            String[]
+  generationSource HypotheticalRunoutGenerationSource
+  createdAt        DateTime                           @default(now())
+  hand             HandRecord                         @relation(fields: [handId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+}
+
+model HypotheticalRunoutPurchase {
+  id                  String            @id @default(cuid())
+  handId              String
+  roomId              String
+  buyerUserId         String
+  cost                Int
+  walletSignedAmount  Int
+  walletType          WalletLedgerType
+  walletLedgerEntryId String            @unique
+  idempotencyKey      String            @unique
+  requestFingerprint  String
+  createdAt           DateTime          @default(now())
+  hand                HandRecord        @relation(fields: [handId, roomId], references: [id, roomId], onDelete: Restrict, onUpdate: Restrict)
+  room                Room              @relation(fields: [roomId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  buyer               User              @relation("HypotheticalRunoutBuyer", fields: [buyerUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  walletLedgerEntry   WalletLedgerEntry @relation(fields: [walletLedgerEntryId, buyerUserId, roomId, handId, walletSignedAmount, walletType], references: [id, userId, relatedRoomId, relatedHandId, signedAmount, type], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([buyerUserId, handId])
+  @@unique([walletLedgerEntryId, buyerUserId, roomId, handId, walletSignedAmount, walletType])
+  @@index([handId])
+}
+
+model HandActionRecord {
+  id              String                     @id @default(cuid())
+  handId          String
+  sequence        Int
+  street          HandStreet
+  userId          String
+  seatIndex       Int
+  actionType      HandActionType
+  clientActionId  String?
+  amount          Int?
+  raiseTo         Int?
+  automatic       Boolean                    @default(false)
+  automaticReason HandActionAutomaticReason?
+  stateVersion    Int
+  createdAt       DateTime                   @default(now())
+  hand            HandRecord                 @relation(fields: [handId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  handPlayer      HandPlayerRecord           @relation(fields: [handId, userId, seatIndex], references: [handId, userId, seatIndex], onDelete: Restrict, onUpdate: Restrict)
+  user            User                       @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([handId, sequence])
+  @@unique([handId, userId, clientActionId])
+  @@index([userId, createdAt])
+}
+
+model HandPotRecord {
+  id                String     @id @default(cuid())
+  handId            String
+  potIndex          Int
+  amount            Int
+  contributors      String[]
+  eligiblePlayers   String[]
+  winners           String[]
+  oddChipRecipients String[]
+  createdAt         DateTime   @default(now())
+  hand              HandRecord @relation(fields: [handId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([handId, potIndex])
+}
+
+model HandRunoutRecord {
+  id           String                 @id @default(cuid())
+  handId       String
+  runoutIndex  Int
+  board        String[]
+  createdAt    DateTime               @default(now())
+  hand         HandRecord             @relation(fields: [handId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  pots         HandRunoutPotRecord[]
+
+  @@unique([handId, runoutIndex])
+  @@index([handId])
+}
+
+model HandRunoutPotRecord {
+  id                String           @id @default(cuid())
+  handId            String
+  runoutIndex       Int
+  potIndex          Int
+  amount            Int
+  contributors      String[]
+  eligiblePlayers   String[]
+  winners           String[]
+  oddChipRecipients String[]
+  createdAt         DateTime         @default(now())
+  runout             HandRunoutRecord @relation(fields: [handId, runoutIndex], references: [handId, runoutIndex], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([handId, runoutIndex, potIndex])
+  @@index([handId, runoutIndex])
+}
+
+model TableSnapshot {
+  id                String                 @id @default(cuid())
+  roomId            String                 @unique
+  schemaVersion     Int                    @default(1)
+  stateVersion      Int                    @default(0)
+  snapshotRevision  Int                    @default(0)
+  runtimeStatus     TableRuntimeStatus     @default(IDLE)
+  activeHandId      String?
+  activeHandNumber  Int?
+  turnDeadlineAt    DateTime?
+  startDeadlineAt   DateTime?
+  payload           Json
+  recoveryStatus    SnapshotRecoveryStatus @default(READY)
+  lastRecoveryError String?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  room              Room                   @relation(fields: [roomId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([activeHandId])
+  @@index([runtimeStatus])
+  @@index([recoveryStatus])
+}
+
+model TableActionReceipt {
+  id                    String         @id @default(cuid())
+  roomId                String
+  handId                String
+  userId                String
+  clientActionId        String
+  requestFingerprint    String
+  actionType            HandActionType
+  resultingStateVersion Int
+  resultCode            String
+  resultPayload         Json
+  createdAt             DateTime       @default(now())
+  room                  Room           @relation(fields: [roomId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  user                  User           @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([roomId, userId, clientActionId])
+  @@index([handId])
+  @@index([roomId, createdAt])
+}

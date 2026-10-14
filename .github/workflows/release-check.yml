@@ -1,0 +1,81 @@
+name: Manual Release Check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  extended:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+        env:
+          POSTGRES_DB: wepoker_test
+          POSTGRES_PASSWORD: release-check-strong-postgres-password
+          POSTGRES_USER: wepoker_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U wepoker_test -d wepoker_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      APP_VERSION: 7.0.0-release-check
+      BACKUP_RETENTION_DAYS: "7"
+      CI: "true"
+      POSTGRES_DB: wepoker_test
+      POSTGRES_USER: wepoker_test
+      WEPOKER_BACKUP_DIR: ${{ runner.temp }}/wepoker-backups
+      WEPOKER_ENV_FILE: ${{ github.workspace }}/.env.release.test
+      WEPOKER_STANDARD_POSTGRES: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.16.0
+          cache: pnpm
+      - name: Prepare toolchain and configuration
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.16.0 --activate
+          printf '%s\n' \
+            'NODE_ENV=test' \
+            'HOST=127.0.0.1' \
+            'PORT=3105' \
+            'CLIENT_ORIGIN=http://127.0.0.1:5173' \
+            'DATABASE_URL=postgresql://wepoker_test:release-check-strong-postgres-password@127.0.0.1:5432/wepoker_test?schema=public' \
+            'DATABASE_POOL_MAX=10' \
+            'SESSION_COOKIE_NAME=wepoker_session' \
+            'SESSION_TTL_DAYS=14' \
+            'INITIAL_USER_POINTS=10000' \
+            'DEV_SEED_PASSWORD=release-check-seed-password' \
+            'LOG_LEVEL=silent' > "$WEPOKER_ENV_FILE"
+          corepack pnpm install --frozen-lockfile
+          corepack pnpm --filter @paiyouju/server exec prisma migrate deploy
+          corepack pnpm build
+      - name: Extended deterministic simulation
+        run: corepack pnpm --filter @paiyouju/poker-core simulate --hands=100000 --seed=123456
+      - name: Firefox and WebKit
+        run: |
+          corepack pnpm --filter @paiyouju/web exec playwright install --with-deps firefox webkit
+          WEPOKER_E2E_ENV_FILE="$WEPOKER_ENV_FILE" corepack pnpm --filter @paiyouju/web test:e2e:browsers
+      - name: Backup, restore, audit, and restored readiness
+        run: |
+          echo "WEPOKER_POSTGRES_CONTAINER=$(docker ps --filter publish=5432 --format '{{.ID}}' | head -n 1)" >> "$GITHUB_ENV"
+          corepack pnpm backup:create
+          corepack pnpm backup:verify
+          corepack pnpm backup:restore -- --database wepoker_restore --confirm-new-database
+          sed 's#/wepoker_test?#/wepoker_restore?#' "$WEPOKER_ENV_FILE" > "${{ runner.temp }}/.env.restore.test"
+          WEPOKER_ENV_FILE="${{ runner.temp }}/.env.restore.test" corepack pnpm audit:data
+          WEPOKER_ENV_FILE="${{ runner.temp }}/.env.restore.test" PORT=3110 node apps/server/dist/index.js &
+          server_pid=$!
+          for attempt in $(seq 1 30); do curl --fail --silent http://127.0.0.1:3110/ready && break; sleep 1; done
+          curl --fail http://127.0.0.1:3110/ready
+          kill "$server_pid"
+      - name: Prune safety
+        run: corepack pnpm backup:prune
