@@ -92,6 +92,6 @@ docker compose --env-file .env.production -f compose.prod.yaml run --rm -it migr
 
 ### 后台管理
 
-普通玩家在登录页注册。管理员登录后进入 `/admin/users` 查看用户，进入详情调整虚拟钻石余额，操作需填写原因并保留审计。房间管理在 `/admin/rooms`。账户数据在应用连接的 PostgreSQL 中持久保存，不通过 Docker Desktop 管理。
+普通玩家在登录页注册。管理员登录后进入 `/admin/users` 查看用户，进入详情调整虚拟钻石余额，操作需填写原因并保留审计。房间管理在 `/admin/rooms`。账户数据在应用连接的 PostgreSQL 中持久保存。
 
 删除玩家资料前需要先处理关联房间和对局；完整流程见 [管理员指南](docs/admin-guide.md)。
